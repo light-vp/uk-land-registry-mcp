@@ -1,0 +1,56 @@
+{
+  "name": "uk-land-registry-mcp",
+  "version": "0.4.0",
+  "description": "MCP server for HM Land Registry open data: sold prices, UK House Price Index, corporate and overseas property ownership, INSPIRE title boundaries and due-diligence flags.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "uk-land-registry-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc && chmod +x dist/index.js",
+    "clean": "rm -rf dist",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "npm run build && node --test --experimental-strip-types tests/*.test.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "verify-eval": "node scripts/verify-evaluation.mjs"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "land-registry",
+    "hmlr",
+    "uk",
+    "property",
+    "price-paid",
+    "house-price-index",
+    "inspire",
+    "conveyancing",
+    "open-data"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "yauzl": "^3.4.0",
+    "zod": "^3.25.76"
+  },
+  "optionalDependencies": {
+    "@duckdb/node-api": "^1.5.5-r.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/yauzl": "^3.4.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

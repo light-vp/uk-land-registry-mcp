@@ -1,0 +1,69 @@
+uk-land-registry-mcp
+====================
+
+The source code in this repository is licensed under the MIT Licence (see
+LICENSE). The data it retrieves is not, and is subject to the terms below.
+
+This software redistributes no government data. It queries public endpoints at
+request time, and any bulk dataset is downloaded by the end user, under that
+user's own account and licence acceptance, into a cache on their own machine.
+
+
+HM Land Registry Price Paid Data and UK House Price Index
+---------------------------------------------------------
+Contains HM Land Registry data © Crown copyright and database right.
+Licensed under the Open Government Licence v3.0:
+https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/
+
+Attribution is required for any onward publication of figures derived from
+this data. The tools in this server emit the attribution line with every
+response for that reason.
+
+
+INSPIRE Index Polygons
+----------------------
+Contains HM Land Registry data © Crown copyright and database right.
+Contains Ordnance Survey data © Crown copyright and database right.
+
+INSPIRE Index Polygons are published under the Open Government Licence, but
+the Open Government Licence does not extend to third-party rights that HM Land
+Registry is not authorised to license. HM Land Registry uses Ordnance Survey
+data to prepare the polygons, and use of the polygon geometry (including the
+x,y coordinates) is subject to Ordnance Survey licensing terms. Satisfy
+yourself that your intended use complies before relying on this data
+commercially.
+
+INSPIRE polygons are indicative title extents, not legally definitive
+boundaries.
+
+
+UK companies that own property in England and Wales (CCOD)
+Overseas companies that own property in England and Wales (OCOD)
+Registered leases; Restrictive covenants
+-----------------------------------------------------------------
+These datasets are free of charge but are NOT published under the Open
+Government Licence. They carry HM Land Registry's own licence terms, which
+include restrictions on commercial re-use and on republishing the data
+wholesale.
+
+You must register at https://use-land-property-data.service.gov.uk/ and accept
+the licence for each dataset before you can download it. This software never
+redistributes these datasets: it downloads them using your API key, under the
+licence you accepted, to your own machine. Your use of the resulting data
+remains governed by that licence.
+
+
+postcodes.io / ONS Postcode Directory
+-------------------------------------
+Contains OS data © Crown copyright and database right.
+Contains Royal Mail data © Royal Mail copyright and database right.
+Contains National Statistics data © Crown copyright and database right.
+Licensed under the Open Government Licence v3.0.
+
+
+Not legal advice
+----------------
+Everything this software produces is derived from published open data. It is
+not legal advice, not a valuation, and not a substitute for official Land
+Registry searches or a conveyancer's report. Registers change continuously and
+the bulk datasets are monthly snapshots that lag the live register.

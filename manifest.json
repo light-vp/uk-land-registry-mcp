@@ -1,0 +1,78 @@
+{
+  "manifest_version": "0.2",
+  "name": "uk-land-registry-mcp",
+  "display_name": "UK Land Registry",
+  "version": "0.4.0",
+  "description": "HM Land Registry open data: sold prices, House Price Index, corporate and overseas ownership, title boundaries and due-diligence flags for England and Wales.",
+  "long_description": "Query HM Land Registry's open data from your assistant.\n\n**Works immediately, no account needed:** sold prices for every property sale registered in England and Wales since 1995, the official UK House Price Index, and postcode lookups.\n\n**With a free HM Land Registry API key:** which companies own which titles (including overseas companies and their jurisdictions of incorporation), INSPIRE title boundary polygons, and registered lease and restrictive covenant flags. These datasets are published as monthly bulk files rather than a query API, so they are downloaded once into a local DuckDB cache on your machine.\n\nNothing is sent anywhere except the government endpoints being queried. There is no telemetry.\n\nContains HM Land Registry data © Crown copyright and database right, licensed under the Open Government Licence v3.0. Not legal advice, and not a substitute for official Land Registry searches.",
+  "author": {
+    "name": "Vaibhav Patel"
+  },
+  "license": "MIT",
+  "keywords": [
+    "land-registry",
+    "property",
+    "uk",
+    "house-prices",
+    "conveyancing",
+    "open-data"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "HMLR_API_KEY": "${user_config.hmlr_api_key}",
+        "HMLR_DATA_DIR": "${user_config.data_dir}"
+      }
+    }
+  },
+  "user_config": {
+    "hmlr_api_key": {
+      "type": "string",
+      "title": "HM Land Registry API key",
+      "description": "Optional. Register free at use-land-property-data.service.gov.uk and accept the licence for each dataset you want. Needed only for ownership, boundary and due-diligence tools — sold prices, the House Price Index and postcode lookups work without it.",
+      "sensitive": true,
+      "required": false
+    },
+    "data_dir": {
+      "type": "directory",
+      "title": "Dataset cache location",
+      "description": "Where downloaded bulk datasets are stored. The corporate ownership dataset is several hundred megabytes, so choose a drive with room.",
+      "required": false,
+      "default": "${HOME}/.hmlr-mcp"
+    }
+  },
+  "tools": [
+    { "name": "hmlr_search_transactions", "description": "Search sold property prices by location, date, price, type and tenure" },
+    { "name": "hmlr_get_property_history", "description": "Every registered sale of one address, with appreciation and growth rate" },
+    { "name": "hmlr_get_area_stats", "description": "Median and mean sold prices for an area, with type breakdown and year-on-year change" },
+    { "name": "hmlr_get_hpi", "description": "Official UK House Price Index for a region" },
+    { "name": "hmlr_compare_hpi_regions", "description": "Compare the House Price Index across two to five regions" },
+    { "name": "hmlr_index_adjust_price", "description": "Restate a historical sale price in another period's money" },
+    { "name": "hmlr_search_company_properties", "description": "Find registered titles owned by a company" },
+    { "name": "hmlr_search_ownership_by_area", "description": "Find corporately-owned titles in an area" },
+    { "name": "hmlr_get_overseas_ownership_summary", "description": "Summarise overseas property ownership by jurisdiction" },
+    { "name": "hmlr_get_title_ownership", "description": "Look up the registered proprietors of a title number" },
+    { "name": "hmlr_get_title_polygon", "description": "Get a title's boundary polygon and area" },
+    { "name": "hmlr_find_adjacent_parcels", "description": "Find neighbouring land parcels and flag corporate owners" },
+    { "name": "hmlr_search_parcels_in_area", "description": "Search land parcels by radius or bounding box and size" },
+    { "name": "hmlr_check_leasehold", "description": "Check the registered leases dataset for a title or address" },
+    { "name": "hmlr_check_restrictive_covenants", "description": "Check whether a title carries a restrictive covenant indicator" },
+    { "name": "hmlr_lookup_postcode", "description": "Resolve a postcode to coordinates and administrative geography" },
+    { "name": "hmlr_data_status", "description": "Report API key configuration and which bulk datasets are cached" },
+    { "name": "hmlr_download_dataset", "description": "Download a bulk dataset into the local cache" }
+  ],
+  "prompts": [
+    { "name": "due_diligence_report", "description": "Pre-offer due diligence report for one address", "arguments": ["address"] },
+    { "name": "ownership_investigation", "description": "Investigate corporate or overseas ownership of a company or area", "arguments": ["target"] },
+    { "name": "site_analysis", "description": "Analyse a development or land-assembly site", "arguments": ["location"] }
+  ],
+  "compatibility": {
+    "runtimes": {
+      "node": ">=22"
+    }
+  }
+}

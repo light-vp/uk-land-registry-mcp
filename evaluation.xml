@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Read-only evaluation set for uk-land-registry-mcp.
+
+  Every question is answerable with the live tools alone (no API key, no bulk
+  download), needs more than one tool call, and has a single verifiable answer.
+
+  Answers were verified against the live HM Land Registry endpoints. They are
+  drawn from historical Price Paid records and settled House Price Index months
+  rather than recent ones, because the index is revised for several months
+  after first publication and late registrations can still alter a recent
+  period's transaction counts.
+-->
+<evaluation>
+
+  <qa_pair>
+    <question>Look up the postcode TS1 2AB to find its local authority district, then get the UK House Price Index for that district. What was the average house price there in January 2020, in pounds?</question>
+    <answer>105226</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Exactly one property transaction is recorded in HM Land Registry Price Paid Data at postcode BA1 1AA during 2017. HM Land Registry classifies it as an "additional" price paid transaction rather than a standard one. What price was paid, in pounds?</question>
+    <answer>1183255</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Find the sale history of 52 Coates Avenue, postcode TS4 3AQ. What price, in pounds, was paid at its earliest registered sale?</question>
+    <answer>186100</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Take the earliest registered sale price of 52 Coates Avenue, TS4 3AQ, which was in July 2022. Using the House Price Index for the local authority covering that postcode, restate that price in June 2024 money. What is the adjusted figure, in whole pounds?</question>
+    <answer>186676</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>According to the UK House Price Index, how many sales were recorded in England in February 1997?</question>
+    <answer>66246</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Compare the average house price for Middlesbrough against England in January 2020 using the UK House Price Index. How much higher was the England figure than the Middlesbrough figure, in pounds?</question>
+    <answer>128823</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Look up the postcode TS1 2AB. Which UK parliamentary constituency is it in?</question>
+    <answer>Middlesbrough and Thornaby East</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Using the UK House Price Index for England, what was the average house price in February 1997, in pounds?</question>
+    <answer>53060</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Search Price Paid Data for the single 2017 transaction at postcode BA1 1AA and identify the building. What is the primary addressable object name (the building name) recorded for it?</question>
+    <answer>ROYAL MAIL DELIVERY OFFICE</answer>
+  </qa_pair>
+
+  <qa_pair>
+    <question>Look up postcode TS4 3AQ to find its local authority, then get that authority's UK House Price Index value (not the average price) for July 2022. What was the index value?</question>
+    <answer>96.9</answer>
+  </qa_pair>
+
+</evaluation>

@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test (Node ${{ matrix.node }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # DuckDB ships prebuilt native binaries per platform, so both are worth
+        # covering: a Linux-only run would not catch a broken macOS binary.
+        os: [ubuntu-latest, macos-latest]
+        node: [22, 24]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (including unused code)
+        run: npx tsc --noEmit --noUnusedLocals --noUnusedParameters
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        # The default suite is offline: SPARQL is stubbed and the DuckDB tests
+        # run against synthetic fixtures. The live-endpoint suite is gated
+        # behind HMLR_E2E and runs in a separate job.
+        run: node --test --experimental-strip-types tests/*.test.ts
+
+      - name: Verify the server starts and lists its tools
+        run: |
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | node dist/index.js 2>/dev/null \
+            | node -e '
+              let d = "";
+              process.stdin.on("data", (c) => (d += c)).on("end", () => {
+                const listed = d.trim().split("\n").map(JSON.parse).find((m) => m.id === 2);
+                const count = listed?.result?.tools?.length ?? 0;
+                if (count !== 18) {
+                  console.error(`expected 18 tools, got ${count}`);
+                  process.exit(1);
+                }
+                console.log(`server exposed ${count} tools`);
+              });'
+
+  live:
+    name: Live endpoint checks
+    runs-on: ubuntu-latest
+    # Government endpoints are outside our control, so a transient outage must
+    # not fail a pull request. This job reports but does not block.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: End-to-end tests against HM Land Registry
+        env:
+          HMLR_E2E: "1"
+        run: node --test --experimental-strip-types tests/e2e.test.ts
+
+      - name: Check evaluation answers still hold
+        run: npm run verify-eval
