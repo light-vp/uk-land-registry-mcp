@@ -112,6 +112,25 @@ Then download a dataset. Start with OCOD — it's the smallest:
 
 `hmlr_download_dataset` is deliberately a two-step operation: the first call reports the file name and size and downloads nothing, so you can see the cost before committing. CCOD is several hundred MB; INSPIRE is per local authority.
 
+### Which dataset for which question
+
+| You want | Dataset | Rough size |
+|---|---|---|
+| UK companies that own property | `ccod` | ~3.5M rows, several hundred MB |
+| Overseas companies that own property | `ocod` | ~100k rows, small — start here |
+| Title boundary polygons | `inspire` | Per local authority |
+| Registered leases | `leases` | Large |
+| Restrictive covenant indicators | `covenants` | Moderate |
+
+### If a download fails
+
+| Symptom | Cause |
+|---|---|
+| `401`/`403` | The licence for *that specific dataset* isn't accepted on your account. Accepting CCOD's licence does not grant OCOD. This is by far the most common cause. |
+| `404` on a file name | File names are dated (`CCOD_FULL_2026_07.zip`). Run `hmlr_data_status`, or just call `hmlr_download_dataset` without a file name and let it pick the latest. |
+| "signed download URL returned HTTP 403" | These URLs expire about 10 seconds after they're issued. Retry — on a slow connection a large file may need a couple of attempts. |
+| "No file matches area" | INSPIRE files are named per local authority. Use the name exactly as HM Land Registry publishes it; the error lists examples. |
+
 ### Environment variables
 
 | Variable | Default | Purpose |
@@ -191,21 +210,53 @@ Three bundled workflows: `due_diligence_report` (an address), `ownership_investi
 
 ## Development
 
+Requires Node 22 or later (the test runner uses native TypeScript stripping).
+
 ```bash
 npm install
 npm run build
 npm test
 ```
 
-Test with the MCP Inspector:
+Test interactively with the MCP Inspector:
 
 ```bash
 npm run inspect
 ```
 
-`manifest.json` is an [MCPB](https://github.com/anthropics/mcpb) bundle manifest, for packaging the server as a one-click Claude Desktop install that prompts for the API key rather than requiring hand-edited JSON.
+### Test layout
 
-`evaluation.xml` holds ten read-only question/answer pairs for regression testing. All are answerable with the live tools alone, and the answers are drawn from historical records and settled index months so they stay stable.
+The default suite is **offline and deterministic** — no network, no API key — so it is safe to run in CI and on a plane.
+
+| File | Covers |
+|---|---|
+| `tests/units.test.ts` | SPARQL and SQL escaping, postcode handling, region slugs, growth arithmetic |
+| `tests/queries.test.ts` | Generated SPARQL, against a stubbed transport |
+| `tests/ingest.test.ts` | The DuckDB CSV pipeline, against a synthetic CCOD file |
+| `tests/spatial.test.ts` | INSPIRE GML ingest, reprojection, parcel adjacency |
+| `tests/e2e.test.ts` | The live endpoints — **skipped unless `HMLR_E2E=1`** |
+
+```bash
+HMLR_E2E=1 npm test     # include the live-endpoint suite
+npm run verify-eval     # re-derive every evaluation.xml answer from live data
+```
+
+Two of these suites guard against things that are easy to regress silently and expensive to notice:
+
+- **`queries.test.ts` asserts triple order.** The endpoint evaluates patterns roughly as written, so a selective filter placed after the `OPTIONAL` blocks turns a 0.3-second query into one that exceeds 70 seconds. Nothing else would catch that.
+- **`spatial.test.ts` asserts real distances.** DuckDB's spatial extension returns `0` from `ST_Distance` and `true` from `ST_DWithin` for *any* polygon pair, so `hmlr_find_adjacent_parcels` derives separation from boundary geometry instead. The tests assert the correct answers, not the workaround, so they keep passing if DuckDB fixes it.
+
+### CI
+
+`.github/workflows/ci.yml` runs type-checking (including unused-code detection), the build, the offline suite and a server smoke test across Node 22/24 on Linux and macOS — both platforms, because DuckDB ships per-platform native binaries.
+
+A second job runs the live-endpoint suite and re-verifies the evaluation answers. It is marked `continue-on-error`: government endpoints are outside our control, and a transient outage should report rather than block a pull request.
+
+### Other files
+
+`manifest.json` is an [MCPB](https://github.com/anthropics/mcpb) bundle manifest, for packaging the server as a one-click Claude Desktop install that prompts for the API key instead of requiring hand-edited JSON. It has not yet been packed or tested with `mcpb pack`.
+
+`evaluation.xml` holds ten read-only question/answer pairs. All are answerable with the live tools alone, and the answers come from historical records and settled index months so they stay stable. `npm run verify-eval` re-derives each one from the live endpoints — it checks that the answers remain *factually correct*, which is not the same as scoring whether a model can find them.
 
 The test suite runs against the compiled output in `dist/`. `tests/units.test.ts` covers query escaping, postcode handling and the growth arithmetic; `tests/ingest.test.ts` drives the real DuckDB pipeline against a synthetic CCOD file using HM Land Registry's published column names.
 
