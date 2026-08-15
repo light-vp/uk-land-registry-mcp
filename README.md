@@ -21,6 +21,25 @@ Free, MIT-licensed, runs locally over stdio. No hosting, no telemetry, no accoun
 
 No API key needed for sold prices, the House Price Index or postcode lookups.
 
+> **Not yet published to npm.** The `npx` commands below are for once it is. To run it today, clone and build:
+>
+> ```bash
+> git clone https://github.com/light-vp/uk-land-registry-mcp.git && cd uk-land-registry-mcp && npm install && npm run build
+> ```
+>
+> then point your client at the built entry point:
+>
+> ```json
+> {
+>   "mcpServers": {
+>     "land-registry": {
+>       "command": "node",
+>       "args": ["/absolute/path/to/uk-land-registry-mcp/dist/index.js"]
+>     }
+>   }
+> }
+> ```
+
 **Claude Desktop** — add to `claude_desktop_config.json`:
 
 ```json
