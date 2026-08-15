@@ -200,6 +200,17 @@ Three bundled workflows: `due_diligence_report` (an address), `ownership_investi
 
 **Around 12% of land in England and Wales is still unregistered** and has no INSPIRE polygon and no title.
 
+**You cannot join a boundary polygon to its owner using open data.** This one catches people out, so it's worth being precise. INSPIRE polygons carry an *INSPIRE ID*; ownership data is keyed on a *title number*. HM Land Registry deliberately does not publish the mapping between them — that link is the [National Polygon Service](https://use-land-property-data.service.gov.uk/datasets/nps), which costs £20,000 + VAT a year. The two identifiers aren't even the same shape: title numbers are 2–3 letters plus digits (`CS72510`), INSPIRE IDs are bare integers (`52288545`), so they can never match.
+
+So `hmlr_find_adjacent_parcels` matches corporate owners **by postcode proximity** instead: it reverse-geocodes each parcel's centroid and asks which companies own registered title at that postcode. That answers *"which companies are active around here?"* — useful for land assembly — but **not** *"who owns this parcel?"*. Specifically:
+
+- A postcode usually covers several titles, so a match is a neighbourhood signal, not an ownership claim.
+- The centroid resolves to the *nearest* postcode, which for a large or rural parcel may not be the parcel's own.
+- Titles with no address (bare land) often have no postcode recorded, so they never match.
+- An empty result means nothing matched — not that the land is individually owned.
+
+For actual ownership of a specific title, use `hmlr_get_title_ownership` with a title number, or buy an official copy of the register (£3 via GOV.UK).
+
 **INSPIRE polygons are indicative**, derived from Ordnance Survey mapping. They are not legally definitive boundaries.
 
 **The covenants dataset excludes the covenant wording** by design. It can tell you a title is burdened, never what the burden is. Reading it needs an official copy of the register and the referenced deed (£3 each via GOV.UK).

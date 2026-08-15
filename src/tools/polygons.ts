@@ -20,7 +20,7 @@ import {
   paginatedResponse,
   withAttribution,
 } from "../services/format.js";
-import { lookupPostcode } from "../services/postcodes.js";
+import { bulkReverseGeocode, lookupPostcode } from "../services/postcodes.js";
 
 const TABLE = sqlIdent(DATASETS.inspire!.table);
 
@@ -186,6 +186,115 @@ function parcelTable(rows: ParcelRow[], includeDistance: boolean): string {
       return base;
     }),
   );
+}
+
+export interface CorporateNeighbour {
+  postcode: string;
+  title_number: string;
+  proprietor: string | null;
+  dataset: "ccod" | "ocod";
+}
+
+/**
+ * Explains precisely what the corporate-owner signal is, and is not.
+ *
+ * The free INSPIRE release publishes a polygon's INSPIRE ID but deliberately
+ * omits the title number it belongs to — that link is sold separately as the
+ * National Polygon Service. There is therefore no way to join a parcel to its
+ * proprietor from open data alone. What is possible is to ask which companies
+ * own registered title at the postcode nearest a parcel, which answers the
+ * land-assembly question ("who is active around here?") without pretending to
+ * answer the ownership question ("who owns this?").
+ */
+export const OWNERSHIP_PROXIMITY_CAVEAT =
+  "Corporate owners are matched by **postcode proximity**, not by title. HM Land " +
+  "Registry does not publish the link between an INSPIRE polygon and its title " +
+  "number in the free data, so a parcel cannot be joined to its proprietor. " +
+  "Each entry means a company owns registered title at the postcode nearest that " +
+  "parcel's centroid — a postcode usually covers several titles, so treat this as " +
+  "a neighbourhood signal, not a statement about who owns the parcel. Absence " +
+  "means nothing was matched, not that the land is individually owned.";
+
+/**
+ * Finds companies owning registered title at the postcodes nearest a set of
+ * parcels. Returns a map from the parcel's index in `rows` to its matches.
+ *
+ * Centroids are reverse-geocoded in one bulk request and the ownership tables
+ * queried once for the whole postcode set, so this stays at a couple of round
+ * trips regardless of how many parcels were found.
+ */
+async function corporateOwnersNear(
+  rows: ParcelRow[],
+): Promise<Map<number, CorporateNeighbour[]>> {
+  const byParcel = new Map<number, CorporateNeighbour[]>();
+
+  const available: Array<"ccod" | "ocod"> = [];
+  for (const key of ["ccod", "ocod"] as const) {
+    try {
+      await requireTable(DATASETS[key]!);
+      available.push(key);
+    } catch {
+      continue;
+    }
+  }
+  if (available.length === 0) return byParcel;
+
+  // Only parcels with a usable centroid can be reverse-geocoded.
+  const locatable = rows
+    .map((row, index) => ({ index, lat: row.centroid_lat, lon: row.centroid_lon }))
+    .filter(
+      (entry): entry is { index: number; lat: number; lon: number } =>
+        entry.lat !== null && entry.lon !== null,
+    );
+  if (locatable.length === 0) return byParcel;
+
+  const geocoded = await bulkReverseGeocode(
+    locatable.map((entry) => ({ latitude: entry.lat, longitude: entry.lon })),
+  ).catch(() => []);
+
+  // Group parcels by the postcode resolved for them.
+  const parcelsByPostcode = new Map<string, number[]>();
+  geocoded.forEach((match, position) => {
+    const parcelIndex = locatable[position]?.index;
+    if (!match || parcelIndex === undefined) return;
+    const existing = parcelsByPostcode.get(match.postcode) ?? [];
+    existing.push(parcelIndex);
+    parcelsByPostcode.set(match.postcode, existing);
+  });
+  if (parcelsByPostcode.size === 0) return byParcel;
+
+  const postcodeList = [...parcelsByPostcode.keys()].map((p) => sqlLit(p)).join(", ");
+
+  for (const key of available) {
+    const owners = await query<{
+      postcode: string;
+      title_number: string;
+      proprietor_1_name: string | null;
+    }>(
+      `SELECT "postcode", "title_number", "proprietor_1_name"
+       FROM ${sqlIdent(DATASETS[key]!.table)}
+       WHERE upper(TRIM("postcode")) IN (${postcodeList})
+       LIMIT 500`,
+    ).catch(() => []);
+
+    for (const owner of owners) {
+      const parcelIndexes = parcelsByPostcode.get(owner.postcode.trim().toUpperCase()) ?? [];
+      for (const parcelIndex of parcelIndexes) {
+        const existing = byParcel.get(parcelIndex) ?? [];
+        // Keep the output readable: a busy postcode can hold dozens of titles.
+        if (existing.length >= 5) continue;
+        existing.push({
+          postcode: owner.postcode,
+          title_number: owner.title_number,
+          proprietor: owner.proprietor_1_name,
+          dataset: key,
+        });
+        byParcel.set(parcelIndex, existing);
+      }
+    }
+  }
+
+  return byParcel;
 }
 
 /** Locates the parcel to start from, by INSPIRE ID or by point-in-polygon. */
@@ -356,15 +465,17 @@ Errors:
       title: "Find neighbouring land parcels",
       description: `Find the parcels that share a boundary with a given parcel, or lie within a set distance of it — the land-assembly and ransom-strip tool.
 
-When the ownership datasets are also cached, each neighbour is cross-referenced against CCOD/OCOD so corporately-owned adjoining land is flagged.
-
 Requires INSPIRE data for the local authority (hmlr_download_dataset with dataset="inspire").
+
+When CCOD/OCOD are also cached, each neighbouring parcel is annotated with companies that own registered title at the postcode nearest its centroid.
+
+IMPORTANT — what that annotation means. HM Land Registry does not publish the link between an INSPIRE polygon and its title number in the free data; that link is sold separately as the National Polygon Service. A parcel therefore cannot be joined to its proprietor from open data. The match is by postcode proximity instead, so it answers "which companies are active around here?" and NOT "who owns this parcel?". A postcode usually covers several titles. Report it as a neighbourhood signal and never as the parcel's ownership. An empty result means nothing matched, not that the land is individually owned.
 
 Args:
   - inspire_id (string, optional), or postcode / latitude+longitude to locate the starting parcel.
   - within_metres (0-500, default 0): 0 means directly touching; higher values include nearby parcels.
   - min_area_sq_m (number, optional): filter out small slivers.
-  - check_ownership (boolean, default true): flag corporately-owned neighbours.
+  - check_ownership (boolean, default true): annotate with nearby corporate owners.
   - limit (1-200, default 25)
   - response_format ('markdown'|'json', default 'markdown')
 
@@ -372,21 +483,26 @@ Returns JSON with schema:
   {
     "origin": {"inspire_id": string|null, "label": string},
     "within_metres": number,
+    "ownership_caveat": string,     // present when check_ownership is true
     "total": number, "count": number, "has_more": boolean,
     "items": [{
       "inspire_id": string|null, "area": string|null, "area_sq_m": number|null,
       "distance_m": number|null,
       "centroid": {"latitude": number|null, "longitude": number|null},
-      "corporate_owner": {"title_number","proprietor","dataset"}|null
+      "nearby_corporate_owners": [
+        {"postcode": string, "title_number": string, "proprietor": string|null, "dataset": "ccod"|"ocod"}
+      ]
     }]
   }
 
 Examples:
   - "What adjoins the plot at TS1 2AB?" -> postcode="TS1 2AB"
-  - "Land within 50m owned by companies" -> postcode="TS1 2AB", within_metres=50
+  - "Any corporate landholding within 50m?" -> postcode="TS1 2AB", within_metres=50
+  - To ask who owns a specific title, use hmlr_get_title_ownership with a title number.
 
 Errors:
-  - Explains which local authority to download when the starting parcel is not cached.`,
+  - Explains which local authority to download when the starting parcel is not cached.
+  - Returns parcels with an empty nearby_corporate_owners list when CCOD/OCOD are not cached, rather than failing.`,
       inputSchema: AdjacentFields,
       annotations: {
         readOnlyHint: true,
@@ -434,52 +550,25 @@ Errors:
          LIMIT ${Math.trunc(input.limit)}`,
       );
 
-      // Cross-reference ownership only when a dataset is actually cached.
-      const withOwnership = await Promise.all(
-        rows.map(async (row) => {
-          let corporateOwner: Record<string, unknown> | null = null;
+      const ownership = input.check_ownership
+        ? await corporateOwnersNear(rows)
+        : new Map<number, CorporateNeighbour[]>();
 
-          if (input.check_ownership && row.inspire_id) {
-            for (const key of ["ccod", "ocod"] as const) {
-              try {
-                await requireTable(DATASETS[key]!);
-              } catch {
-                continue;
-              }
-              const owner = await query<{
-                title_number: string;
-                proprietor_1_name: string | null;
-              }>(
-                `SELECT "title_number", "proprietor_1_name"
-                 FROM ${sqlIdent(DATASETS[key]!.table)}
-                 WHERE upper(TRIM("title_number")) = ${sqlLit(row.inspire_id.toUpperCase())}
-                 LIMIT 1`,
-              ).catch(() => []);
-              if (owner.length > 0) {
-                corporateOwner = {
-                  title_number: owner[0]!.title_number,
-                  proprietor: owner[0]!.proprietor_1_name,
-                  dataset: key,
-                };
-                break;
-              }
-            }
-          }
+      const withOwnership = rows.map((row, index) => ({
+        inspire_id: row.inspire_id,
+        area: row.area,
+        area_sq_m: row.area_sq_m,
+        distance_m: row.distance_m ?? null,
+        centroid: { latitude: row.centroid_lat, longitude: row.centroid_lon },
+        nearby_corporate_owners: ownership.get(index) ?? [],
+      }));
 
-          return {
-            inspire_id: row.inspire_id,
-            area: row.area,
-            area_sq_m: row.area_sq_m,
-            distance_m: row.distance_m ?? null,
-            centroid: { latitude: row.centroid_lat, longitude: row.centroid_lon },
-            corporate_owner: corporateOwner,
-          };
-        }),
-      );
+      const flagged = withOwnership.filter((parcel) => parcel.nearby_corporate_owners.length > 0);
 
       const payload = {
         origin: { inspire_id: anchor.inspire_id, label: anchor.label },
         within_metres: input.within_metres,
+        ...(input.check_ownership ? { ownership_caveat: OWNERSHIP_PROXIMITY_CAVEAT } : {}),
         ...paginate(withOwnership, withOwnership.length, 0),
       };
 
@@ -491,23 +580,25 @@ Errors:
             `Found **${page.count}** neighbouring parcel${page.count === 1 ? "" : "s"}.`,
             "",
             parcelTable(rows, true),
-            withOwnership.some((p) => p.corporate_owner)
-              ? "\n## Corporately-owned neighbours\n\n" +
+            flagged.length > 0
+              ? "\n## Corporate owners at neighbouring postcodes\n\n" +
                 markdownTable(
-                  ["INSPIRE ID", "Title", "Proprietor", "Source"],
-                  withOwnership
-                    .filter((p) => p.corporate_owner)
-                    .map((p) => [
-                      p.inspire_id,
-                      String(p.corporate_owner!.title_number),
-                      String(p.corporate_owner!.proprietor ?? "—"),
-                      String(p.corporate_owner!.dataset).toUpperCase(),
+                  ["Near parcel", "Postcode", "Proprietor", "Title", "Source"],
+                  flagged.flatMap((parcel) =>
+                    parcel.nearby_corporate_owners.map((owner) => [
+                      parcel.inspire_id,
+                      owner.postcode,
+                      owner.proprietor ?? "—",
+                      owner.title_number,
+                      owner.dataset.toUpperCase(),
                     ]),
-                )
+                  ),
+                ) +
+                "\n\n_These companies own registered title **at the postcode nearest " +
+                "each parcel's centroid** — not necessarily the parcel itself. See the " +
+                "note below._"
               : null,
-            "\n_INSPIRE IDs and title numbers are different identifiers; the " +
-              "ownership cross-reference matches only where they coincide, so an " +
-              "absent flag is not proof of individual ownership._",
+            input.check_ownership ? `\n_${OWNERSHIP_PROXIMITY_CAVEAT}_` : null,
           ]
             .filter((line): line is string => line !== null)
             .join("\n"),

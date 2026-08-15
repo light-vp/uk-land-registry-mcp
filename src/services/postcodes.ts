@@ -128,6 +128,79 @@ export async function reverseGeocode(
 }
 
 /**
+ * Reverse geocodes many coordinates in one request.
+ *
+ * postcodes.io accepts up to 100 geolocations per call, so a parcel list is
+ * chunked rather than looked up one at a time — a 200-parcel search would
+ * otherwise make 200 round trips.
+ *
+ * Returns one entry per input point, in the same order, with `null` where no
+ * postcode lies within the search radius (common on rural land).
+ */
+export async function bulkReverseGeocode(
+  points: Array<{ latitude: number; longitude: number }>,
+  radiusMetres = 500,
+): Promise<Array<{ postcode: string; admin_district: string | null } | null>> {
+  if (points.length === 0) return [];
+
+  const results: Array<{ postcode: string; admin_district: string | null } | null> = [];
+
+  for (let start = 0; start < points.length; start += 100) {
+    const chunk = points.slice(start, start + 100);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(`${POSTCODES_IO_BASE}/postcodes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "User-Agent": "uk-land-registry-mcp",
+        },
+        body: JSON.stringify({
+          geolocations: chunk.map((point) => ({
+            longitude: point.longitude,
+            latitude: point.latitude,
+            limit: 1,
+            radius: radiusMetres,
+          })),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new PostcodeError(`postcodes.io bulk lookup returned HTTP ${response.status}.`);
+      }
+
+      const body = (await response.json()) as {
+        result?: Array<{ result: Array<Record<string, unknown>> | null }>;
+      };
+
+      for (let index = 0; index < chunk.length; index += 1) {
+        const nearest = body.result?.[index]?.result?.[0];
+        const postcode = nearest ? toStr(nearest.postcode) : null;
+        results.push(
+          postcode ? { postcode, admin_district: toStr(nearest!.admin_district) } : null,
+        );
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new PostcodeError("The postcodes.io bulk lookup timed out. Try a smaller limit.");
+      }
+      if (error instanceof PostcodeError) throw error;
+      throw new PostcodeError(
+        `Could not reach postcodes.io: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return results;
+}
+
+/**
  * Looks up an outward code (e.g. "BA1"). Useful when only a partial postcode
  * is known; returns the centroid and the admin areas it covers.
  */

@@ -81,6 +81,22 @@ suite("live HM Land Registry endpoints", () => {
     assert.ok(Array.isArray(districts) && districts.length > 0);
   });
 
+  it("reverse geocodes many parcel centroids in one request", async () => {
+    const { bulkReverseGeocode } = await import("../dist/services/postcodes.js");
+    // Two points in central Middlesbrough, plus one in the North Sea.
+    const results = await bulkReverseGeocode([
+      { latitude: 54.57203, longitude: -1.23414 },
+      { latitude: 54.574759, longitude: -1.227667 },
+      { latitude: 56.5, longitude: 1.5 },
+    ]);
+
+    assert.equal(results.length, 3, "one entry per input, in order");
+    assert.ok(results[0]?.postcode.startsWith("TS"), `got ${results[0]?.postcode}`);
+    assert.equal(results[0]?.admin_district, "Middlesbrough");
+    assert.ok(results[1]?.postcode.startsWith("TS"));
+    assert.equal(results[2], null, "open water has no postcode within the radius");
+  });
+
   it("returns null for a well-formed postcode that does not exist", async () => {
     const { lookupPostcode } = await import("../dist/services/postcodes.js");
     assert.equal(await lookupPostcode("ZZ1 1ZZ"), null);

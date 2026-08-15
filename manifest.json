@@ -57,7 +57,7 @@
     { "name": "hmlr_get_overseas_ownership_summary", "description": "Summarise overseas property ownership by jurisdiction" },
     { "name": "hmlr_get_title_ownership", "description": "Look up the registered proprietors of a title number" },
     { "name": "hmlr_get_title_polygon", "description": "Get a title's boundary polygon and area" },
-    { "name": "hmlr_find_adjacent_parcels", "description": "Find neighbouring land parcels and flag corporate owners" },
+    { "name": "hmlr_find_adjacent_parcels", "description": "Find neighbouring land parcels, with corporate owners at nearby postcodes" },
     { "name": "hmlr_search_parcels_in_area", "description": "Search land parcels by radius or bounding box and size" },
     { "name": "hmlr_check_leasehold", "description": "Check the registered leases dataset for a title or address" },
     { "name": "hmlr_check_restrictive_covenants", "description": "Check whether a title carries a restrictive covenant indicator" },
