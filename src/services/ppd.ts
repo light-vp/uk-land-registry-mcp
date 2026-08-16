@@ -272,7 +272,7 @@ function whereClause(filters: TransactionFilters, variant: QueryVariant = "full"
 }
 
 const SELECT_VARS =
-  "?txid ?amount ?date ?ptype ?tenure ?newBuild ?category " +
+  "?txid ?amount ?date ?ptype ?tenure ?newBuild ?category ?address " +
   "?paon ?saon ?street ?locality ?town ?district ?county ?postcode";
 
 /** Renders a BS7666 address as a single readable line. */
@@ -303,6 +303,7 @@ function toTransaction(binding: Record<string, import("../types.js").SparqlBindi
 
   return {
     transaction_id: str(binding, "txid") ?? "",
+    address_id: str(binding, "address"),
     price: num(binding, "amount") ?? 0,
     date: str(binding, "date") ?? "",
     property_type: rawType ? (PROPERTY_TYPES[rawType] ?? rawType) : null,
@@ -374,6 +375,50 @@ LIMIT ${AGGREGATE_ROW_CAP + 1}`;
   const rows = results.results.bindings.map(toTransaction);
   const capped = rows.length > AGGREGATE_ROW_CAP;
   return { transactions: capped ? rows.slice(0, AGGREGATE_ROW_CAP) : rows, capped };
+}
+
+/**
+ * Decides whether a run of sales can be treated as one dwelling's history.
+ *
+ * Price Paid Data does not guarantee that one address string means one
+ * property. A Georgian townhouse converted into flats, whose units were
+ * registered without SAONs, produces a dozen sales under a single address;
+ * differencing those prices yields figures like "-75% in a month" that
+ * describe two different flats rather than any change in value. Appreciation
+ * is therefore withheld unless the sales can be attributed to one dwelling.
+ *
+ * Note that distinct address *nodes* are not evidence of distinct dwellings:
+ * HMLR routinely holds two nodes for the same address differing only in an
+ * administrative field such as `locality`. The identifying fields are
+ * compared instead.
+ */
+export function assessSingleProperty(
+  sales: Transaction[],
+  saonProvided: boolean,
+): { single: boolean; reasons: string[]; distinctAddresses: number } {
+  const dwellingKey = (sale: Transaction): string =>
+    [sale.address.saon, sale.address.paon, sale.address.street, sale.address.postcode]
+      .map((part) => (part ?? "").trim().toUpperCase())
+      .join("|");
+
+  const distinctAddresses = new Set(sales.map(dwellingKey)).size;
+  const looksLikeFlats = sales.some((sale) => sale.property_type === "flat");
+  const reasons: string[] = [];
+
+  if (distinctAddresses > 1) {
+    reasons.push(
+      `these sales span ${distinctAddresses} different addresses, so they are not ` +
+        "all the same registered property",
+    );
+  }
+  if (looksLikeFlats && !saonProvided) {
+    reasons.push(
+      "the sales are of flats and no `saon` (unit number) was given, so this address " +
+        "may cover every flat in the building rather than one of them",
+    );
+  }
+
+  return { single: reasons.length === 0, reasons, distinctAddresses };
 }
 
 /** Median of a numeric array. Returns null for an empty array. */

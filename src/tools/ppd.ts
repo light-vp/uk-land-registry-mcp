@@ -28,6 +28,7 @@ import {
 import { lookupOutcode, normalisePostcode } from "../services/postcodes.js";
 import {
   annualisedGrowth,
+  assessSingleProperty,
   countTransactions,
   fetchForAggregate,
   mean,
@@ -333,6 +334,8 @@ Errors:
 
 This is the "what did this house sell for, and when" tool. It matches on postcode plus house number/name, which uniquely identifies almost every property in England and Wales.
 
+One caveat that matters for interpretation. Price Paid Data does not guarantee that one address string means one dwelling: a converted building whose flats were registered without unit numbers yields many sales under a single address. When the sales cannot be attributed to one property, the appreciation and annualised-growth figures are withheld (returned as null) and single_property is false with an explanation in ambiguity_note. Do not compute the change yourself from the listed prices in that case — differencing sales of different flats produces figures that look like value changes and are not. Pass a saon to isolate one unit.
+
 Args:
   - postcode (string, required): full postcode, e.g. 'BA1 1AA'.
   - paon (string, required): house number or name, e.g. '42' or 'THE OLD RECTORY'.
@@ -344,6 +347,9 @@ Returns JSON with schema:
   {
     "address": string,             // resolved display address
     "sale_count": number,
+    "single_property": boolean,       // false when sales cannot be attributed to one dwelling
+    "distinct_addresses": number,
+    "ambiguity_note": string,         // present only when single_property is false
     "first_sale": {"date","price"}|null,
     "last_sale": {"date","price"}|null,
     "total_appreciation_pct": number|null,
@@ -401,15 +407,32 @@ Errors:
         };
       }
 
+      // Appreciation between consecutive sales only means anything if those
+      // sales are the same dwelling, and Price Paid Data does not guarantee
+      // that. A converted townhouse whose flats were registered without unit
+      // numbers yields many sales under one address string; differencing them
+      // produces figures like "-75% in a month" that describe two different
+      // flats, not a fall in value.
+      const assessment = assessSingleProperty(sales, Boolean(input.saon));
+      const ambiguous = !assessment.single;
+      const ambiguityReasons = assessment.reasons;
+      const looksLikeFlats = sales.some((sale) => sale.property_type === "flat");
+      const distinctAddressIds = new Set(
+        sales.map((sale) => sale.address_id).filter((id): id is string => id !== null),
+      );
+
       const enriched = sales.map((sale, index) => {
         const previous = index > 0 ? sales[index - 1] : undefined;
+        // Suppress the derived figures entirely when we cannot attribute
+        // consecutive sales to one dwelling — a null is honest, a number is not.
         const changePct =
-          previous && previous.price > 0
+          !ambiguous && previous && previous.price > 0
             ? ((sale.price - previous.price) / previous.price) * 100
             : null;
-        const annualised = previous
-          ? annualisedGrowth(previous.price, previous.date, sale.price, sale.date)
-          : null;
+        const annualised =
+          !ambiguous && previous
+            ? annualisedGrowth(previous.price, previous.date, sale.price, sale.date)
+            : null;
         return {
           date: sale.date,
           price: sale.price,
@@ -425,21 +448,36 @@ Errors:
       const first = sales[0]!;
       const last = sales[sales.length - 1]!;
       const totalAppreciation =
-        sales.length > 1 && first.price > 0
+        !ambiguous && sales.length > 1 && first.price > 0
           ? ((last.price - first.price) / first.price) * 100
           : null;
       const overallAnnualised =
-        sales.length > 1
+        !ambiguous && sales.length > 1
           ? annualisedGrowth(first.price, first.date, last.price, last.date)
           : null;
+
+      const ambiguityNote = ambiguous
+        ? `These ${sales.length} sales cannot be attributed to a single dwelling, because ` +
+          `${ambiguityReasons.join(", and ")}. The sales are listed as recorded, but ` +
+          "appreciation between them has been withheld: differencing prices across " +
+          "different properties produces figures that look like value changes and are not. " +
+          (looksLikeFlats && !input.saon
+            ? "Re-run with a `saon` (for example saon=\"FLAT 3\") to isolate one unit."
+            : "Use hmlr_search_transactions on this postcode to see the individual records.")
+        : null;
 
       const payload = {
         address: last.address.display,
         sale_count: sales.length,
         first_sale: { date: first.date, price: first.price },
         last_sale: { date: last.date, price: last.price },
+        single_property: !ambiguous,
+        distinct_addresses: assessment.distinctAddresses,
+        /** Land Registry sometimes holds several address nodes per dwelling. */
+        distinct_address_records: distinctAddressIds.size,
         total_appreciation_pct: totalAppreciation,
         annualised_growth_pct: overallAnnualised,
+        ...(ambiguityNote ? { ambiguity_note: ambiguityNote } : {}),
         sales: enriched,
       };
 
@@ -450,6 +488,7 @@ Errors:
             "",
             `**${sales.length} registered sale${sales.length === 1 ? "" : "s"}** since 1995.`,
             "",
+            ambiguityNote ? `> ⚠️ **${ambiguityNote}**\n` : null,
             markdownTable(
               ["Date", "Price", "Change", "Annualised", "Type", "Tenure"],
               enriched.map((sale) => [

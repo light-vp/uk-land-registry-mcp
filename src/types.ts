@@ -21,6 +21,12 @@ export interface SparqlResults {
 /** A single Price Paid Data transaction. */
 export interface Transaction {
   transaction_id: string;
+  /**
+   * URI of the PPD address node. Price Paid Data sometimes records several
+   * dwellings under one address string, so this is the only reliable way to
+   * tell whether two sales are the same property.
+   */
+  address_id: string | null;
   price: number;
   date: string;
   property_type: string | null;
