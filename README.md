@@ -1,5 +1,9 @@
 # uk-land-registry-mcp
 
+[![npm](https://img.shields.io/npm/v/uk-land-registry-mcp)](https://www.npmjs.com/package/uk-land-registry-mcp)
+[![licence: MIT](https://img.shields.io/npm/l/uk-land-registry-mcp)](LICENSE)
+[![node](https://img.shields.io/node/v/uk-land-registry-mcp)](https://nodejs.org)
+
 An MCP server for **HM Land Registry open data** — sold prices, the UK House Price Index, corporate and overseas property ownership, title boundaries and due-diligence flags for England and Wales.
 
 Free, MIT-licensed, runs locally over stdio. No hosting, no telemetry, no account required to get started.
@@ -19,26 +23,7 @@ Free, MIT-licensed, runs locally over stdio. No hosting, no telemetry, no accoun
 
 ## 60-second quickstart
 
-No API key needed for sold prices, the House Price Index or postcode lookups.
-
-> **Not yet published to npm.** The `npx` commands below are for once it is. To run it today, clone and build:
->
-> ```bash
-> git clone https://github.com/light-vp/uk-land-registry-mcp.git && cd uk-land-registry-mcp && npm install && npm run build
-> ```
->
-> then point your client at the built entry point:
->
-> ```json
-> {
->   "mcpServers": {
->     "land-registry": {
->       "command": "node",
->       "args": ["/absolute/path/to/uk-land-registry-mcp/dist/index.js"]
->     }
->   }
-> }
-> ```
+No API key needed for sold prices, the House Price Index or postcode lookups. Nothing to install either — `npx` fetches the package on demand, so the config below is the whole setup.
 
 **Claude Desktop** — add to `claude_desktop_config.json`:
 
@@ -281,6 +266,21 @@ Two of these suites guard against things that are easy to regress silently and e
 `.github/workflows/ci.yml` runs type-checking (including unused-code detection), the build, the offline suite and a server smoke test across Node 22/24 on Linux and macOS — both platforms, because DuckDB ships per-platform native binaries.
 
 A second job runs the live-endpoint suite and re-verifies the evaluation answers. It is marked `continue-on-error`: government endpoints are outside our control, and a transient outage should report rather than block a pull request.
+
+### Releasing
+
+`.github/workflows/publish.yml` publishes to npm when a **GitHub Release** is published — never on merge, so shipping is always deliberate.
+
+1. Bump `version` in `package.json` and merge that to `main`.
+2. Draft a GitHub Release tagged `v<version>` (matching exactly) and publish it.
+
+The workflow then refuses to continue if the tag disagrees with `package.json`, or if that version is already on the registry. It builds, checks the server still lists 18 tools, and publishes — at which point `prepublishOnly` cleans, rebuilds and runs the offline suite one more time before the tarball is packed.
+
+Authentication is npm **trusted publishing**: the job exchanges a GitHub OIDC token for a short-lived credential, so there is no npm token stored in this repository and nothing to rotate. It also attaches a provenance attestation, which is why npm shows the package as built from this repo at a specific commit.
+
+`workflow_dispatch` runs the same pipeline with `dry_run` on by default, if you want to rehearse it without uploading.
+
+Versions are permanent — npm never lets a published version number be reused, even after an unpublish.
 
 ### Other files
 

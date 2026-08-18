@@ -1,0 +1,102 @@
+name: Publish to npm
+
+# Publishing is deliberate, never a side effect of merging: it happens when you
+# publish a GitHub Release, which is also where the release notes live.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Pack and gate, but do not upload"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  # required for npm trusted publishing (OIDC) and for the provenance
+  # attestation it produces — without it, publish falls back to needing a token
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      # trusted publishing needs npm 11.5.1+ to exchange the OIDC token; the npm
+      # bundled with the runner's Node lags, so pin it forward explicitly
+      - name: Use an npm that can do trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci
+
+      # A release tagged v0.5.0 that ships 0.4.0 is the kind of mistake you only
+      # notice from a bug report, and the version can never be reused.
+      - name: Check the release tag matches package.json
+        if: github.event_name == 'release'
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          pkg="v$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::release tag $tag does not match package.json ($pkg)"
+            exit 1
+          fi
+          echo "publishing $pkg"
+
+      # Refuse to re-run a version that is already on the registry, rather than
+      # failing later with npm's "cannot publish over previously published".
+      - name: Check the version is not already published
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "::error::$name@$version is already on the registry — bump the version"
+            exit 1
+          fi
+          echo "$name@$version is free"
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify the server starts and lists its tools
+        run: |
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | node dist/index.js 2>/dev/null \
+            | node -e '
+              let d = "";
+              process.stdin.on("data", (c) => (d += c)).on("end", () => {
+                const listed = d.trim().split("\n").map(JSON.parse).find((m) => m.id === 2);
+                const count = listed?.result?.tools?.length ?? 0;
+                if (count !== 18) {
+                  console.error(`expected 18 tools, got ${count}`);
+                  process.exit(1);
+                }
+                console.log(`server exposed ${count} tools`);
+              });'
+
+      # prepublishOnly cleans, rebuilds and runs the offline suite before the
+      # tarball is packed, so the real gate lives in package.json, not here.
+      # No NODE_AUTH_TOKEN: with trusted publishing configured on npmjs.com the
+      # CLI exchanges this job's OIDC token for a short-lived credential. If you
+      # ever switch to a granular access token instead, add it as the
+      # NODE_AUTH_TOKEN env var on this step.
+      - name: Publish
+        if: github.event_name == 'release' || inputs.dry_run == false
+        run: npm publish --provenance --access public
+
+      - name: Dry run
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: npm publish --provenance --access public --dry-run
