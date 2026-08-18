@@ -105,7 +105,17 @@ jobs:
                   console.error(`expected 18 tools, got ${count}`);
                   process.exit(1);
                 }
-                console.log(`server exposed ${count} tools`);
+                // 0.5.0 shipped introducing itself as 0.4.0, from a second
+                // hardcoded copy of the version. It is derived now; this makes
+                // sure it stays that way.
+                const init = d.trim().split("\n").map(JSON.parse).find((m) => m.id === 1);
+                const reported = init?.result?.serverInfo?.version;
+                const expected = require("./package.json").version;
+                if (reported !== expected) {
+                  console.error(`server reports ${reported}, package.json says ${expected}`);
+                  process.exit(1);
+                }
+                console.log(`server exposed ${count} tools, reporting v${reported}`);
               });'
 
   live:

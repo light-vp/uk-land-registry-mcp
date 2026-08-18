@@ -1,10 +1,23 @@
 /** Shared constants for the UK Land Registry MCP server. */
 
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const SERVER_NAME = "uk-land-registry-mcp";
-export const SERVER_VERSION = "0.4.0";
+
+/**
+ * Read from package.json rather than restated here. When this was its own
+ * literal it silently fell behind: 0.5.0 shipped introducing itself to clients
+ * as 0.4.0, because `npm version` only rewrites package.json. The path holds in
+ * both layouts — dist/constants.js and src/constants.ts each sit one level
+ * below the manifest — and package.json is always in the published tarball.
+ */
+const { version } = createRequire(import.meta.url)("../package.json") as {
+  version: string;
+};
+
+export const SERVER_VERSION = version;
 
 /** HM Land Registry Linked Data SPARQL endpoint. No authentication required. */
 export const SPARQL_ENDPOINT =
