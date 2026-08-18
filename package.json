@@ -2,6 +2,15 @@
   "name": "uk-land-registry-mcp",
   "version": "0.4.0",
   "description": "MCP server for HM Land Registry open data: sold prices, UK House Price Index, corporate and overseas property ownership, INSPIRE title boundaries and due-diligence flags.",
+  "homepage": "https://vaibhav.co.uk/land-registry",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/light-vp/uk-land-registry-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/light-vp/uk-land-registry-mcp/issues"
+  },
+  "author": "Vaibhav (https://vaibhav.co.uk)",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -19,6 +28,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "test": "npm run build && node --test --experimental-strip-types tests/*.test.ts",
+    "prepublishOnly": "npm run clean && npm test",
     "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
     "verify-eval": "node scripts/verify-evaluation.mjs"
   },
