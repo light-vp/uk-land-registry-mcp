@@ -11,6 +11,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A version can only be published once, so the bump has to land with the change
+  # rather than be remembered at release time. This fails a pull request that
+  # alters anything the tarball ships without moving the version forward.
+  version:
+    name: Version bumped
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a version bump when published content changes
+        run: |
+          base="origin/${{ github.base_ref }}"
+
+          # exactly the paths listed in package.json "files", plus the manifests
+          # that describe them — changes anywhere else never reach a user
+          if ! git diff --name-only "$base"...HEAD \
+               | grep -qE '^(src/|package(-lock)?\.json|README\.md|LICENSE|NOTICE)'; then
+            echo "nothing that ships changed — no bump needed"
+            exit 0
+          fi
+
+          git show "$base:package.json" > /tmp/base-package.json
+          old="$(node -p "require('/tmp/base-package.json').version")"
+          new="$(node -p "require('./package.json').version")"
+
+          if [ "$old" = "$new" ]; then
+            echo "::error file=package.json::published content changed but the version is still $old. Bump it — npm never lets a version be reused."
+            exit 1
+          fi
+
+          node -e '
+            const [a, b] = [process.argv[1], process.argv[2]].map((v) => v.split(".").map(Number));
+            const forward = b[0] > a[0]
+              || (b[0] === a[0] && (b[1] > a[1] || (b[1] === a[1] && b[2] > a[2])));
+            if (!forward) {
+              console.error(`::error file=package.json::version must move forward: ${process.argv[1]} -> ${process.argv[2]}`);
+              process.exit(1);
+            }
+            console.log(`version ${process.argv[1]} -> ${process.argv[2]}`);
+          ' "$old" "$new"
+
   build:
     name: Build and test (Node ${{ matrix.node }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
