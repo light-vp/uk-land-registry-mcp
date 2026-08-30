@@ -1,12 +1,15 @@
 # uk-land-registry-mcp
 
 [![npm](https://img.shields.io/npm/v/uk-land-registry-mcp)](https://www.npmjs.com/package/uk-land-registry-mcp)
+[![CI](https://github.com/light-vp/uk-land-registry-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/light-vp/uk-land-registry-mcp/actions/workflows/ci.yml?query=branch%3Amain)
 [![licence: MIT](https://img.shields.io/npm/l/uk-land-registry-mcp)](LICENSE)
 [![node](https://img.shields.io/node/v/uk-land-registry-mcp)](https://nodejs.org)
 
 An MCP server for **HM Land Registry open data** — sold prices, the UK House Price Index, corporate and overseas property ownership, title boundaries and due-diligence flags for England and Wales.
 
 Free, MIT-licensed, runs locally over stdio. No hosting, no telemetry, no account required to get started.
+
+[**Package on npm**](https://www.npmjs.com/package/uk-land-registry-mcp) · [**What it can do, with worked examples**](https://vaibhav.co.uk/land-registry)
 
 ```
 "What did 52 Coates Avenue, TS4 3AQ sell for?"
