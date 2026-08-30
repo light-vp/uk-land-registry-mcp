@@ -1,6 +1,6 @@
 {
   "name": "uk-land-registry-mcp",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "MCP server for HM Land Registry open data: sold prices, UK House Price Index, corporate and overseas property ownership, INSPIRE title boundaries and due-diligence flags.",
   "homepage": "https://vaibhav.co.uk/land-registry",
   "repository": {
